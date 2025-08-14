@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Dívidas</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f5f5f5; margin: 20px; }
+        h1 { text-align: center; color: #4F81BD; }
+        .container { max-width: 1000px; margin: auto; background-color: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: center; }
+        th { background-color: #4F81BD; color: #fff; }
+        input, select { padding: 5px; width: 100%; }
+        button { padding: 10px 20px; margin-top: 10px; background-color: #4F81BD; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background-color: #3a65a2; }
+        .summary { display: flex; justify-content: space-around; margin-top: 20px; }
+        .summary div { background-color: #DCE6F1; padding: 15px; border-radius: 10px; width: 23%; text-align: center; font-weight: bold; }
+        canvas { margin-top: 30px; }
+    </style>
+</head>
+<body>
+    <h1>Controle de Dívidas e Parcelamentos</h1>
+    <div class="container">
+        <form id="debtForm">
+            <div style="display:flex; gap:10px; flex-wrap: wrap;">
+                <input type="text" id="credor" placeholder="Credor/Loja" required>
+                <select id="tipo">
+                    <option value="Cartão">Cartão</option>
+                    <option value="Empréstimo">Empréstimo</option>
+                    <option value="Financiamento">Financiamento</option>
+                    <option value="Outro">Outro</option>
+                </select>
+                <input type="number" id="valorTotal" placeholder="Valor Total" required>
+                <input type="number" id="parcelasTotais" placeholder="Parcelas Totais" required>
+                <input type="number" id="parcelasPagas" placeholder="Parcelas Pagas" required>
+                <input type="date" id="proximaParcela">
+            </div>
+            <button type="submit">Adicionar Dívida</button>
+        </form>
+        <table id="debtTable">
+            <thead>
+                <tr>
+                    <th>Credor</th>
+                    <th>Tipo</th>
+                    <th>Valor Total</th>
+                    <th>Parcelas Totais</th>
+                    <th>Parcelas Pagas</th>
+                    <th>Parcelas Restantes</th>
+                    <th>Valor Parcela</th>
+                    <th>Data Próx. Parcela</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <div class="summary">
+            <div id="totalDividas">Total Dívidas: R$ 0,00</div>
+            <div id="totalPago">Total Pago: R$ 0,00</div>
+            <div id="totalRestante">Total Restante: R$ 0,00</div>
+            <div id="totalMensal">Total Mensal: R$ 0,00</div>
+        </div>
+        <canvas id="debtChart" height="200"></canvas>
+    </div>
+
+    <script>
+        let debts = JSON.parse(localStorage.getItem('debts')) || [];
+
+        function salvarDados() {
+            localStorage.setItem('debts', JSON.stringify(debts));
+        }
+
+        function atualizarTabela() {
+            const tbody = document.querySelector('#debtTable tbody');
+            tbody.innerHTML = '';
+            debts.forEach(d => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${d.credor}</td>
+                    <td>${d.tipo}</td>
+                    <td>R$ ${d.valorTotal.toFixed(2)}</td>
+                    <td>${d.parcelasTotais}</td>
+                    <td>${d.parcelasPagas}</td>
+                    <td>${d.parcelasRestantes}</td>
+                    <td>R$ ${d.valorParcela.toFixed(2)}</td>
+                    <td>${d.proximaParcela}</td>
+                `;
+                tbody.appendChild(row);
+            });
+            atualizarResumo();
+        }
+
+        function atualizarResumo() {
+            let totalDividas = 0;
+            let totalPago = 0;
+            let totalRestante = 0;
+            let totalMensal = 0;
+
+            debts.forEach(d => {
+                totalDividas += d.valorTotal;
+                totalPago += d.parcelasPagas * d.valorParcela;
+                totalRestante += d.parcelasRestantes * d.valorParcela;
+                totalMensal += d.valorParcela;
+            });
+
+            document.getElementById('totalDividas').innerText = `Total Dívidas: R$ ${totalDividas.toFixed(2)}`;
+            document.getElementById('totalPago').innerText = `Total Pago: R$ ${totalPago.toFixed(2)}`;
+            document.getElementById('totalRestante').innerText = `Total Restante: R$ ${totalRestante.toFixed(2)}`;
+            document.getElementById('totalMensal').innerText = `Total Mensal: R$ ${totalMensal.toFixed(2)}`;
+
+            atualizarGrafico();
+        }
+
+        function atualizarGrafico() {
+            const ctx = document.getElementById('debtChart').getContext('2d');
+            if(window.chart) window.chart.destroy();
+            window.chart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: debts.map(d => d.credor),
+                    datasets: [{
+                        data: debts.map(d => d.parcelasRestantes * d.valorParcela),
+                        backgroundColor: debts.map((_, i) => `hsl(${i * 60 % 360}, 70%, 60%)`)
+                    }]
+                },
+                options: {
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+
+        document.getElementById('debtForm').addEventListener('submit', e => {
+            e.preventDefault();
+            const credor = document.getElementById('credor').value;
+            const tipo = document.getElementById('tipo').value;
+            const valorTotal = parseFloat(document.getElementById('valorTotal').value);
+            const parcelasTotais = parseInt(document.getElementById('parcelasTotais').value);
+            const parcelasPagas = parseInt(document.getElementById('parcelasPagas').value);
+            const proximaParcela = document.getElementById('proximaParcela').value;
+            const parcelasRestantes = parcelasTotais - parcelasPagas;
+            const valorParcela = valorTotal / parcelasTotais;
+
+            debts.push({credor, tipo, valorTotal, parcelasTotais, parcelasPagas, parcelasRestantes, valorParcela, proximaParcela});
+            salvarDados();
+            atualizarTabela();
+            e.target.reset();
+        });
+
+        // Carregar tabela ao abrir
+        atualizarTabela();
+    </script>
+</body>
+</html>
